@@ -1,7 +1,7 @@
 // runE2BAgent.ts
 import { Sandbox } from '@e2b/code-interpreter';
 import { Sandbox as SandboxMCP } from 'e2b';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import {
   E2BAgentInput,
   E2BAgentOutput,
@@ -303,14 +303,14 @@ export async function runE2BAgent(
   - df.to_sql('data', conn, if_exists='replace', index=False)
 - Use matplotlib.pyplot as plt and ALWAYS call plt.show() for charts.`,
             parameters: {
-              type: 'object',
+              type: SchemaType.OBJECT,
               properties: {
                 code: {
-                  type: 'string',
+                  type: SchemaType.STRING,
                   description: 'The Python code to execute in a single cell.',
                 },
                 reasoning: {
-                  type: 'string',
+                  type: SchemaType.STRING,
                   description:
                     'Brief explanation of what this code is trying to do.',
                 },
@@ -406,8 +406,12 @@ If you attempt to answer in natural language before generating charts, the orche
 
     // -------------------- Chat Loop with Gemini --------------------
 
+    // Use stable Gemini 2.0 Flash model (not experimental)
+    const modelName = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+    console.log(`   🤖 Using Gemini model: ${modelName}`);
+    
     const model = genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash-exp',
+      model: modelName,
       tools,
     });
 
@@ -448,18 +452,20 @@ If you attempt to answer in natural language before generating charts, the orche
       if (functionCalls && functionCalls.length > 0) {
         console.log(`      🛠️ Tool calls (${functionCalls.length})`);
 
-        const functionResponses = [];
+        const functionResponseParts: Array<{
+          functionResponse: { name: string; response: any };
+        }> = [];
 
         for (const functionCall of functionCalls) {
           const toolName = functionCall.name;
-          const args = functionCall.args;
+          const args = functionCall.args as Record<string, unknown>;
 
           console.log(`      🔧 Executing tool "${toolName}"`);
 
           try {
             if (toolName === 'run_python') {
               const code = args.code as string;
-              const reasoning = args.reasoning as string;
+              const reasoning = (args.reasoning as string) || 'No reasoning provided';
 
               console.log(`         🐍 Reasoning: ${reasoning.slice(0, 200)}`);
               const exec = await sandbox!.runCode(code);
@@ -488,12 +494,12 @@ If you attempt to answer in natural language before generating charts, the orche
                 }
               }
 
-              let toolResultContent;
+              let toolResultContent: Record<string, unknown>;
               if (exec.error) {
                 toolResultContent = {
                   status: 'error',
-                  name: exec.error.name,
-                  value: exec.error.value,
+                  error_name: exec.error.name,
+                  error_value: exec.error.value,
                   traceback: exec.error.traceback,
                   charts_generated: chartsInStep,
                 };
@@ -506,39 +512,47 @@ If you attempt to answer in natural language before generating charts, the orche
 
                 toolResultContent = {
                   status: 'success',
-                  stdout,
-                  data_preview: textResults.slice(0, 1000),
+                  stdout: stdout.slice(0, 2000),
+                  data_preview: textResults.slice(0, 2000),
                   charts_generated: chartsInStep,
+                  total_charts_so_far: allCharts.length,
                 };
               }
 
-              functionResponses.push({
-                name: toolName,
-                response: toolResultContent,
+              functionResponseParts.push({
+                functionResponse: {
+                  name: toolName,
+                  response: toolResultContent,
+                },
               });
             } else {
-              functionResponses.push({
-                name: toolName,
-                response: {
-                  status: 'error',
-                  message: `Unknown tool: ${toolName}`,
+              functionResponseParts.push({
+                functionResponse: {
+                  name: toolName,
+                  response: {
+                    status: 'error',
+                    message: `Unknown tool: ${toolName}`,
+                  },
                 },
               });
             }
           } catch (toolErr: any) {
             console.error(`         ❌ Tool "${toolName}" failed:`, toolErr);
-            functionResponses.push({
-              name: toolName,
-              response: {
-                status: 'error',
-                message: toolErr?.message || String(toolErr),
+            functionResponseParts.push({
+              functionResponse: {
+                name: toolName,
+                response: {
+                  status: 'error',
+                  message: toolErr?.message || String(toolErr),
+                },
               },
             });
           }
         }
 
-        // Send function responses back to model
-        await chat.sendMessage(functionResponses);
+        // Send function responses back to model using proper format
+        console.log(`      📤 Sending ${functionResponseParts.length} function response(s) to model`);
+        await chat.sendMessage(functionResponseParts);
 
         // After tools, loop again
         continue;
