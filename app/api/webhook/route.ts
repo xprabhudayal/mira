@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { put } from '@vercel/blob';
-import { sendWhatsAppMessage, downloadMedia, extractPhoneNumber, markMessageAsRead } from '../../../lib/whatsapp';
+import { sendWhatsAppMessage, downloadMedia, markMessageAsRead } from '../../../lib/whatsapp';
 import { getSession, createSession, updateSession } from '../../../lib/session-store';
 import { runE2BAgent } from '../../../lib/e2b-agent';
 import { generatePDF } from '../../../lib/pdf-generator';
 import { WhatsAppWebhookPayload } from '../../../lib/types';
 
 export const maxDuration = 300;
+export const dynamic = 'force-dynamic';
 
 /**
  * GET handler for webhook verification (Meta requirement)
@@ -17,13 +18,19 @@ export async function GET(req: NextRequest) {
   const token = searchParams.get('hub.verify_token');
   const challenge = searchParams.get('hub.challenge');
 
-  const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || 'mira_verify_token_2024';
+  const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN || 'hello-mira';
+
+  console.log('🔍 Verification attempt:', { mode, token, challenge, expected: VERIFY_TOKEN });
 
   if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-    console.log('✅ Webhook verified');
+    console.log('✅ Webhook verified successfully');
     return new NextResponse(challenge, { status: 200 });
   } else {
-    console.error('❌ Webhook verification failed');
+    console.error('❌ Webhook verification failed', { 
+      receivedToken: token, 
+      expectedToken: VERIFY_TOKEN,
+      mode 
+    });
     return NextResponse.json({ error: 'Verification failed' }, { status: 403 });
   }
 }
@@ -33,19 +40,23 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
   try {
-    const payload: WhatsAppWebhookPayload = await req.json();
+    const payload = await req.json() as WhatsAppWebhookPayload;
 
     console.log('📱 Received webhook:', JSON.stringify(payload, null, 2));
 
     // Validate webhook payload
     if (payload.object !== 'whatsapp_business_account') {
+      console.log('⚠️ Invalid webhook object:', payload.object);
       return NextResponse.json({ error: 'Invalid webhook object' }, { status: 400 });
     }
 
-    // Process each entry
+    // Process each entry - handle messages asynchronously to respond quickly to Meta
+    const messagePromises: Promise<void>[] = [];
+    
     for (const entry of payload.entry) {
       for (const change of entry.changes) {
         if (change.field !== 'messages') {
+          console.log('⚠️ Skipping non-messages field:', change.field);
           continue;
         }
 
@@ -53,17 +64,29 @@ export async function POST(req: NextRequest) {
 
         // Handle status updates (delivered, read, etc.)
         if (value.statuses) {
-          console.log('📊 Status update:', value.statuses);
+          console.log('📊 Status update:', JSON.stringify(value.statuses));
           continue;
         }
 
         // Handle incoming messages
         if (value.messages && value.messages.length > 0) {
+          console.log(`📨 Processing ${value.messages.length} message(s)`);
           for (const message of value.messages) {
-            await handleIncomingMessage(message, value.metadata.phone_number_id);
+            // Process each message - don't await to respond quickly
+            messagePromises.push(
+              handleIncomingMessage(message, value.metadata.phone_number_id)
+                .catch(err => console.error('❌ Error handling message:', err))
+            );
           }
+        } else {
+          console.log('⚠️ No messages in webhook payload');
         }
       }
+    }
+
+    // Wait for all message processing to complete (with timeout protection)
+    if (messagePromises.length > 0) {
+      await Promise.all(messagePromises);
     }
 
     return NextResponse.json({ success: true });
@@ -74,15 +97,35 @@ export async function POST(req: NextRequest) {
   }
 }
 
+// Simple in-memory deduplication (for production, use Redis/KV)
+const processedMessages = new Set<string>();
+const MESSAGE_DEDUP_TTL = 60000; // 1 minute
+
+function isMessageProcessed(messageId: string): boolean {
+  if (processedMessages.has(messageId)) {
+    return true;
+  }
+  processedMessages.add(messageId);
+  // Clean up after TTL
+  setTimeout(() => processedMessages.delete(messageId), MESSAGE_DEDUP_TTL);
+  return false;
+}
+
 /**
  * Handle individual incoming message
  */
-async function handleIncomingMessage(message: any, phoneNumberId: string) {
+async function handleIncomingMessage(message: any, _phoneNumberId: string) {
   const from = message.from;
   const messageId = message.id;
   const messageType = message.type;
 
-  console.log(`📱 Processing message from ${from}, type: ${messageType}`);
+  console.log(`📱 Processing message from ${from}, type: ${messageType}, id: ${messageId}`);
+
+  // Deduplicate messages (WhatsApp can send duplicates)
+  if (isMessageProcessed(messageId)) {
+    console.log(`⚠️ Skipping duplicate message: ${messageId}`);
+    return;
+  }
 
   // Mark message as read
   await markMessageAsRead(messageId).catch(err => 
@@ -93,6 +136,9 @@ async function handleIncomingMessage(message: any, phoneNumberId: string) {
   let session = getSession(from);
   if (!session) {
     session = createSession(from);
+    console.log(`🆕 Created new session for ${from}`);
+  } else {
+    console.log(`📋 Found existing session for ${from}, has CSV: ${!!session.csvBuffer}`);
   }
 
   let csvBuffer: Buffer | undefined;
@@ -152,11 +198,17 @@ async function handleIncomingMessage(message: any, phoneNumberId: string) {
   // Handle text messages
   if (userMessage && !csvBuffer) {
     if (!session.csvBuffer) {
-      // No CSV in session
-      await sendWhatsAppMessage(
-        from,
-        '👋 Welcome to *Mira* - Your AI Data Analyst!\n\nPlease send me a CSV file to analyze. I can:\n\n📊 Analyze trends and patterns\n📈 Perform statistical analysis\n🌐 Research external context\n📄 Generate beautiful PDF reports\n\nJust send your CSV to get started!'
-      );
+      // No CSV in session - send welcome message
+      console.log(`📤 Sending welcome message to ${from}`);
+      try {
+        await sendWhatsAppMessage(
+          from,
+          '👋 Welcome to *Mira* - Your AI Data Analyst!\n\nPlease send me a CSV file to analyze. I can:\n\n📊 Analyze trends and patterns\n📈 Perform statistical analysis\n🌐 Research external context\n📄 Generate beautiful PDF reports\n\nJust send your CSV to get started!'
+        );
+        console.log(`✅ Welcome message sent successfully to ${from}`);
+      } catch (sendError) {
+        console.error(`❌ Failed to send welcome message to ${from}:`, sendError);
+      }
       return;
     } else {
       // User sent a follow-up message
