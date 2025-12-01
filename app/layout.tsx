@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Mira - WhatsApp Data Analyst',
-  description: 'Mira turns messy CSVs into instant WhatsApp-ready insights with AI-driven reports',
+  title: '🔮 Mira: AI-Powered Data Analyst',
+  description: 'Upload any CSV, get instant AI-powered insights with beautiful visualizations',
 };
 
 export default function RootLayout({
