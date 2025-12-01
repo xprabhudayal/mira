@@ -9,7 +9,7 @@
 [![Gemini](https://img.shields.io/badge/Gemini-2.0%20Flash-green?style=for-the-badge)](https://ai.google.dev)
 [![Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com)
 
-**[🚀 Live Demo](https://mira-xprabhudayals-projects.vercel.app)** • **[📊 Try Analysis](https://mira-xprabhudayals-projects.vercel.app/analyze)**
+**[🚀 Live Demo](https://mira-aws.vercel.app)** • **[📊 Try Analysis](https://mira-aws.vercel.app/analyze)**
 
 </div>
 
@@ -52,7 +52,7 @@ No Excel skills required. No SQL knowledge needed. Just upload and get answers.
 
 ---
 
-## �️ Amazlon Kiro Integration
+## 🛠️ Amazon Kiro Integration
 
 > **This entire project was built using Amazon Kiro as the primary development environment.**
 
@@ -74,7 +74,7 @@ Amazon Kiro was instrumental throughout the entire development lifecycle:
 
 | Development Session | Code Generation | Deployment |
 |:---:|:---:|:---:|
-| ![Kiro Session 1](assets/Screenshot%202025-12-01%20at%204.46.05%20PM.png) | ![Kiro Session 2](assets/Screenshot%202025-12-01%20at%204.46.42%20PM.png) | ![Kiro Session 3](assets/Screenshot%202025-12-01%20at%204.47.34%20PM.png) |
+| ![Kiro Session 1](https://cdn.dorahacks.io/static/files/19ad9b125ebe1f1a3ff2bad41d6b9bc5.png) | ![Kiro Session 2](https://cdn.dorahacks.io/static/files/19ad9b0c998e6146ce4f62c43eba4807.png) | ![Kiro Session 3](https://cdn.dorahacks.io/static/files/19ad9b09e483ab08c8679e4432990058.png) |
 | *Architecture planning & setup* | *Building E2B agent & APIs* | *Testing & production deployment* |
 
 </div>
@@ -181,7 +181,7 @@ export async function POST(req: NextRequest) {
 
 ```bash
 # Clone repository
-git clone https://github.com/xprabhudayal/mira.git
+git clone https://github.com/AWS-25/mira.git
 cd mira
 
 # Install dependencies
@@ -251,7 +251,7 @@ mira/
 |-------------|--------|---------|
 | **Project Documentation** | ✅ | Complete README with architecture, setup, and impact |
 | **Working Code** | ✅ | Clean TypeScript codebase |
-| **Live Demo** | ✅ | [mira-xprabhudayals-projects.vercel.app](https://mira-xprabhudayals-projects.vercel.app) |
+| **Live Demo** | ✅ | [mira-aws.vercel.app](https://mira-aws.vercel.app) |
 | **Amazon Kiro Usage** | ✅ | Screenshots + detailed integration documentation |
 
 ### 🏆 Scoring Highlights
@@ -273,6 +273,6 @@ mira/
 
 *Making data analysis accessible to everyone*
 
-### 🌟 [Try the Live Demo](https://mira-xprabhudayals-projects.vercel.app)
+### 🌟 [Try the Live Demo](https://mira-aws.vercel.app)
 
 </div>
